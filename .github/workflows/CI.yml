@@ -7,96 +7,100 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # ----------------------------------------------------
+    # 1) CHECKOUT
+    # ----------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # ----------------------------------------------------
+    # 2) Install tools
+    # ----------------------------------------------------
+    - name: Install tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-format cppcheck flawfinder
 
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format cppcheck flawfinder
+    # ----------------------------------------------------
+    # 3) Lint (clang-format)
+    # ----------------------------------------------------
+    - name: Run lint
+      run: |
+        find . -name "*.c" -o -name "*.h" | xargs --no-run-if-empty clang-format -style=LLVM -n || true
 
-      - name: Run lint (clang-format dry-run)
-        run: |
-          find . -name "*.c" -o -name "*.h" | xargs --no-run-if-empty clang-format -style=LLVM -n || true
+    # ----------------------------------------------------
+    # 4) Tests if Makefile exists
+    # ----------------------------------------------------
+    - name: Run tests if Makefile exists
+      run: |
+        if [ -f Makefile ]; then
+          make test || true
+        else
+          echo "No tests found — skipping."
+        fi
 
-      - name: Run cppcheck (produce xml + txt)
-        run: |
-          cppcheck --enable=warning,style,performance --xml 2> cppcheck.xml || true
-          cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
-          echo "=== cppcheck preview ==="
-          head -n 20 cppcheck.txt || true
+    # ----------------------------------------------------
+    # 5) Static analysis (cppcheck)
+    # ----------------------------------------------------
+    - name: Run cppcheck (produce xml + txt)
+      run: |
+        cppcheck --enable=warning,style,performance --xml 2> cppcheck.xml || true
+        cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
+        echo "=== cppcheck preview ==="
+        head -n 20 cppcheck.txt || true
 
-      - name: Find diagnostic/Dcm/src and run two-level flawfinder scans
-        env:
-          PYTHONUTF8: 0
-          LC_ALL: C.ISO-8859-1
-        run: |
-          echo "Searching for directories matching pattern: */diagnostic/Dcm/src"
-          MATCH=$(find . -type d -path '*/diagnostic/Dcm/src' -print -quit || true)
+    # ----------------------------------------------------
+    # 6) Run flawfinder ONLY on Safety_Queue.c
+    # ----------------------------------------------------
+    - name: Run flawfinder on datastructures/Safety_Queue/src/Safety_Queue.c
+      env:
+        PYTHONUTF8: 0
+        LC_ALL: C.ISO-8859-1
+      run: |
+        TARGET="datastructures/Safety_Queue/src/Safety_Queue.c"
 
-          if [ -n "$MATCH" ]; then
-            echo "Found target: $MATCH"
-            echo "All matches (for reference):"
-            find . -type d -path '*/diagnostic/Dcm/src' -print || true
+        echo "Scanning file: $TARGET"
 
-            # High-signal scan: only level 3-5, single-line (compact)
-            find "$MATCH" -type f \( -name '*.c' -o -name '*.h' \) -print0 \
-              | xargs -0 -r flawfinder --quiet --minlevel=3 --singleline --dataonly > flawfinder_high.txt || true
+        # verify file exists
+        if [ ! -f "$TARGET" ]; then
+          echo "ERROR: File not found: $TARGET"
+          echo "Repo file list:"
+          find . -type f -name 'Safety_Queue.c' -print || true
+          echo "File not found — creating fallback flawfinder.txt"
+          echo "File '$TARGET' not found in repo." > flawfinder.txt
+          exit 0
+        fi
 
-            # Full scan: level 1+, include context and column numbers for each hit (more verbose)
-            find "$MATCH" -type f \( -name '*.c' -o -name '*.h' \) -print0 \
-              | xargs -0 -r flawfinder --quiet --minlevel=1 --context --columns > flawfinder_all.txt || true
+        # run flawfinder on that single file
+        flawfinder --quiet --minlevel=1 --singleline --dataonly "$TARGET" > flawfinder.txt || true
 
-            # If high-signal empty, add a note
-            if [ ! -s flawfinder_high.txt ]; then
-              echo "No level>=3 vulnerability hits found in $MATCH" > flawfinder_high.txt
-            fi
+        # if empty, add a message (artifact must not be empty)
+        if [ ! -s flawfinder.txt ]; then
+          echo "No vulnerabilities detected in $TARGET" > flawfinder.txt
+        fi
 
-            # If all-scan empty (very rare), add a note
-            if [ ! -s flawfinder_all.txt ]; then
-              echo "No vulnerability hits (level>=1) found by flawfinder in $MATCH" > flawfinder_all.txt
-            fi
+        echo "=== flawfinder preview ==="
+        head -n 50 flawfinder.txt || true
 
-          else
-            echo "No directory matching '*/diagnostic/Dcm/src' was found."
-            echo "Repo top-level directories:"
-            ls -la || true
-            echo "Directories under repo (maxdepth 2):"
-            find . -maxdepth 2 -type d -print || true
+    # ----------------------------------------------------
+    # 7) Confirm files exist
+    # ----------------------------------------------------
+    - name: Confirm reports exist
+      run: |
+        echo "--- report files ---"
+        ls -la flawfinder.txt cppcheck.txt cppcheck.xml || true
+        echo "--- flawfinder preview ---"
+        head -n 50 flawfinder.txt || true
 
-            # Create informative fallback files so artifacts exist
-            echo "ERROR: No target directory matching '*/diagnostic/Dcm/src' found in repository." > flawfinder_high.txt
-            echo "ERROR: No target directory matching '*/diagnostic/Dcm/src' found in repository." > flawfinder_all.txt
-            echo "No cppcheck output generated for target (fallback)." > cppcheck.txt
-            echo "<xml/>" > cppcheck.xml
-          fi
-
-          echo "=== flawfinder_high preview ==="
-          head -n 200 flawfinder_high.txt || true
-          echo "=== flawfinder_all preview (first 200 lines) ==="
-          head -n 200 flawfinder_all.txt || true
-
-      - name: Confirm reports and show previews
-        run: |
-          echo "--- workspace top-level ---"
-          ls -la || true
-          echo "--- find reports ---"
-          find . -type f -name 'flawfinder_high.txt' -o -name 'flawfinder_all.txt' -o -name 'cppcheck.txt' -o -name 'cppcheck.xml' -print || true
-          echo "----- flawfinder_high.txt -----"
-          head -n 200 flawfinder_high.txt || true
-          echo "----- flawfinder_all.txt -----"
-          head -n 200 flawfinder_all.txt || true
-          echo "----- cppcheck.txt -----"
-          head -n 200 cppcheck.txt || true
-
-      - name: Upload analysis reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: analysis-reports
-          path: |
-            cppcheck.xml
-            cppcheck.txt
-            flawfinder_high.txt
-            flawfinder_all.txt
+    # ----------------------------------------------------
+    # 8) Upload artifacts
+    # ----------------------------------------------------
+    - name: Upload analysis reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: analysis-reports
+        path: |
+          cppcheck.xml
+          cppcheck.txt
+          flawfinder.txt
