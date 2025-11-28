@@ -1,33 +1,32 @@
-name: CI                     # Name of the workflow shown in GitHub Actions
+name: CI                           # Workflow name shown in GitHub Actions
 
-on: [push, pull_request]     # Trigger workflow on every push and pull request
+on: [push, pull_request]           # Run CI on every push and PR
+
 
 jobs:
-  ci:                        # Job name
-    runs-on: ubuntu-latest   # GitHub runner OS
+  ci:
+    runs-on: ubuntu-latest         # Use Ubuntu runner
 
-    steps:                   # List of steps to execute
+    steps:
 
       # ----------------------------------------------------
-      # STEP 1 — CHECKOUT REPOSITORY
+      # STEP 1 — CHECKOUT CODE
       # ----------------------------------------------------
-      - name: Checkout repo
-        uses: actions/checkout@v4   # Built-in action to pull your code into the runner
+      - name: Checkout repository
+        uses: actions/checkout@v4   # Fetch code into the workflow runner
 
 
       # ----------------------------------------------------
       # STEP 2 — LINT (clang-format)
       # ----------------------------------------------------
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
-        # - Updates package list
-        # - Installs clang-format (used for formatting/linting C code)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
 
       - name: Run lint (clang-format)
         run: |
-          # find . → search for all .c and .h files
-          # clang-format -n → check formatting (does NOT modify)
-          # -style=LLVM → default formatting style
+          # Find all .c and .h files, check formatting only
           find . -name "*.c" -o -name "*.h" | xargs clang-format -style=LLVM -n
 
 
@@ -36,13 +35,11 @@ jobs:
       # ----------------------------------------------------
       - name: Run tests if available
         run: |
-          # Check if Makefile exists
+          # Run tests only if Makefile exists
           if [ -f Makefile ]; then
-            # Run "make test" if defined
             make test || true
-            # "|| true" prevents pipeline failure if tests fail
           else
-            echo "No tests found — skipping"
+            echo "No tests found — skipping."
           fi
 
 
@@ -51,17 +48,18 @@ jobs:
       # ----------------------------------------------------
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
-        # Installs C static analysis tool
 
       - name: Run cppcheck
         run: |
-          # Generate XML report (machine readable)
+          # XML report (machine readable)
           cppcheck --enable=warning,style,performance --xml 2> cppcheck.xml || true
-          
-          # Generate TXT report (easy to read)
+
+          # TXT report (human readable)
           cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
 
-          # "|| true" ensures CI doesn't fail due to warnings
+          # Show quick preview in logs
+          echo "=== cppcheck.txt preview ==="
+          head -n 20 cppcheck.txt
 
 
       # ----------------------------------------------------
@@ -69,24 +67,26 @@ jobs:
       # ----------------------------------------------------
       - name: Install flawfinder
         run: sudo apt-get install -y flawfinder
-        # Installs flawfinder (security/vulnerability scanner)
 
       - name: Run flawfinder
         run: |
-          # Run vulnerability check, output results into text file
-          # --minlevel=1 shows all levels of findings
+          # Vulnerability scan, send output to file
           flawfinder --minlevel=1 . > flawfinder.txt || true
-          # "|| true" keeps CI green even if issues exist
+
+          # Show preview in CI log
+          echo "=== flawfinder.txt preview ==="
+          head -n 20 flawfinder.txt
 
 
       # ----------------------------------------------------
-      # STEP 6 — UPLOAD REPORTS (Artifacts)
+      # STEP 6 — ALWAYS UPLOAD REPORTS AS ARTIFACTS
       # ----------------------------------------------------
       - name: Upload analysis reports
-        uses: actions/upload-artifact@v4  # Upload files to GitHub Actions artifacts
+        if: always()                             # Always run, even if earlier steps fail
+        uses: actions/upload-artifact@v4
         with:
-          name: analysis-reports          # Folder name for downloadable artifacts
-          path: |                         # Files included
-            cppcheck.xml                  # Static analysis (XML)
-            cppcheck.txt                  # Static analysis (text format)
-            flawfinder.txt                # Vulnerability analysis
+          name: analysis-reports                 # Artifact name
+          path: |                                 # Wildcard ensures upload even if files move
+            **/cppcheck.xml
+            **/cppcheck.txt
+            **/flawfinder.txt
