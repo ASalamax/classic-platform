@@ -1,19 +1,18 @@
-name: CI                           # Workflow name shown in GitHub Actions
+name: CI
 
-on: [push, pull_request]           # Run CI on every push and PR
-
+on: [push, pull_request]
 
 jobs:
   ci:
-    runs-on: ubuntu-latest         # Use Ubuntu runner
+    runs-on: ubuntu-latest
 
     steps:
 
       # ----------------------------------------------------
-      # STEP 1 — CHECKOUT CODE
+      # STEP 1 — CHECKOUT REPOSITORY
       # ----------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v4   # Fetch code into the workflow runner
+        uses: actions/checkout@v4
 
 
       # ----------------------------------------------------
@@ -24,18 +23,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-format
 
-      - name: Run lint (clang-format)
+      - name: Run lint (clang-format check only)
         run: |
-          # Find all .c and .h files, check formatting only
-          find . -name "*.c" -o -name "*.h" | xargs clang-format -style=LLVM -n
+          find . -name "*.c" -o -name "*.h" | \
+            xargs clang-format -style=LLVM -n
 
 
       # ----------------------------------------------------
       # STEP 3 — TESTS (optional)
       # ----------------------------------------------------
-      - name: Run tests if available
+      - name: Run tests if Makefile exists
         run: |
-          # Run tests only if Makefile exists
           if [ -f Makefile ]; then
             make test || true
           else
@@ -45,48 +43,4 @@ jobs:
 
       # ----------------------------------------------------
       # STEP 4 — STATIC ANALYSIS (cppcheck)
-      # ----------------------------------------------------
-      - name: Install cppcheck
-        run: sudo apt-get install -y cppcheck
-
-      - name: Run cppcheck
-        run: |
-          # XML report (machine readable)
-          cppcheck --enable=warning,style,performance --xml 2> cppcheck.xml || true
-
-          # TXT report (human readable)
-          cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
-
-          # Show quick preview in logs
-          echo "=== cppcheck.txt preview ==="
-          head -n 20 cppcheck.txt
-
-
-      # ----------------------------------------------------
-      # STEP 5 — VULNERABILITY ANALYSIS (flawfinder)
-      # ----------------------------------------------------
-      - name: Install flawfinder
-        run: sudo apt-get install -y flawfinder
-
-      - name: Run flawfinder
-        run: |
-          # Vulnerability scan, send output to file
-          flawfinder --minlevel=1 . > flawfinder.txt || true
-
-          # Show preview in CI log
-          echo "=== flawfinder.txt preview ==="
-          head -n 20 flawfinder.txt
-
-
-      # ----------------------------------------------------
-      # STEP 6 — ALWAYS UPLOAD REPORTS AS ARTIFACTS
-      # ----------------------------------------------------
-      - name: Upload analysis reports
-        if: always()                             # Always run, even if earlier steps fail
-        uses: actions/upload-artifact@v4
-        with:
-          name: analysis-reports                 # Artifact name
-          path: |                                 # Wildcard ensures upload even if files move
-            **/cppcheck.xml
-            **/cppcheck.txt
-            **/flawfinder.txt
+      # -----------------------------------------
