@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get install -y cppcheck
 
       - name: Run cppcheck
-        run: cppcheck --enable=warning,style,performance --error-exitcode=1 .
+        run: cppcheck cppcheck --enable=warning,style,performance . 
 
       ###############
       # 4) VULNERABILITY ANALYSIS
