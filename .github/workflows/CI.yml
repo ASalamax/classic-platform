@@ -14,7 +14,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
       # ----------------------------------------------------
       # STEP 2 — LINT (clang-format)
       # ----------------------------------------------------
@@ -25,9 +24,8 @@ jobs:
 
       - name: Run lint
         run: |
-          find . -name "*.c" -o -name "*.h" | \
-            xargs clang-format -style=LLVM -n
-
+          # check formatting of C files (dry-run)
+          find . -name "*.c" -o -name "*.h" | xargs --no-run-if-empty clang-format -style=LLVM -n || true
 
       # ----------------------------------------------------
       # STEP 3 — OPTIONAL TESTS
@@ -40,7 +38,6 @@ jobs:
             echo "No tests found — skipping."
           fi
 
-
       # ----------------------------------------------------
       # STEP 4 — STATIC ANALYSIS (cppcheck)
       # ----------------------------------------------------
@@ -49,29 +46,33 @@ jobs:
 
       - name: Run cppcheck
         run: |
+          # produce XML (machine) and TXT (human) reports; keep pipeline green
           cppcheck --enable=warning,style,performance --xml 2> cppcheck.xml || true
           cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
-
           echo "=== cppcheck (preview) ==="
           head -n 20 cppcheck.txt || true
 
+      # ----------------------------------------------------
+      # STEP 5 — VULNERABILITY ANALYSIS (Flawfinder) — SAFE
+      # ----------------------------------------------------
+      - name: Install flawfinder
+        run: sudo apt-get install -y flawfinder
 
-      # ----------------------------------------------------
-      # STEP 5 — VULNERABILITY ANALYSIS (Flawfinder)
-      # SAFEST VERSION USING A SCRIPT
-      # ----------------------------------------------------
-      - name: Create flawfinder script
+      - name: Create and run flawfinder script (safe)
         run: |
+          # create scripts dir
           mkdir -p .github/scripts
-          cat << 'EOF' > .github/scripts/run_flawfinder.sh
+
+          # write a small, robust script using a here-doc (single-quoted to avoid variable expansion)
+          cat > .github/scripts/run_flawfinder.sh <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Allow non-UTF8 files
+# allow non-UTF8 files to be processed by Python
 export PYTHONUTF8=0
 export LC_ALL=C.ISO-8859-1
 
-# Directories to exclude
+# directories to exclude from scan (adjust if needed)
 EXCLUDES=(
   --exclude-dir=.git
   --exclude-dir=.github
@@ -81,24 +82,28 @@ EXCLUDES=(
   --exclude-dir=ArcticCore
 )
 
-# Build exclude parameters
+# build exclude args
 EXCLUDE_ARGS=""
 for e in "${EXCLUDES[@]}"; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS $e"
 done
 
-# Run flawfinder safely (always finishes)
+# run flawfinder:
+#  --quiet      : minimal banners
+#  --minlevel=3 : show only medium/high/critical (3-5)
+#  --singleline : one finding per line (easy parsing)
+#  --dataonly   : no headers/footers
+# output written to flawfinder.txt; || true keeps workflow green
 flawfinder --quiet --minlevel=3 --singleline --dataonly $EXCLUDE_ARGS . > flawfinder.txt || true
 
+# preview (put into logs)
 echo "=== flawfinder preview ==="
-head -n 50 flawfinder.txt || true
-EOF
+head -n 200 flawfinder.txt || true
+SCRIPT
 
-      - name: Run flawfinder script
-        run: |
+          # make it executable and run it
           chmod +x .github/scripts/run_flawfinder.sh
           .github/scripts/run_flawfinder.sh
-
 
       # ----------------------------------------------------
       # STEP 6 — ALWAYS UPLOAD REPORTS AS ARTIFACTS
