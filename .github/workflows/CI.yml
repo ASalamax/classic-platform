@@ -57,7 +57,7 @@ jobs:
         PYTHONUTF8: 0
         LC_ALL: C.ISO-8859-1
       run: |
-        TARGET="datastructures/Safety_Queue/src/Safety_Queue.c"
+        TARGET="safety_security/WdgM/src"
 
         echo "Scanning file: $TARGET"
 
