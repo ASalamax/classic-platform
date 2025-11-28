@@ -66,14 +66,20 @@ jobs:
           export PYTHONUTF8=0
           export LC_ALL=C.ISO-8859-1
 
-          # Exclude problematic directories (adjust as needed)
-          EXCLUDES="--exclude-dir=.git --exclude-dir=.github --exclude-dir=3rdparty --exclude-dir=Generated --exclude-dir=communication/lwip-2.0.3 --exclude-dir=ArcticCore"
+          # Build file list excluding problematic directories
+          FILES=$(find . -type f \( -name "*.c" -o -name "*.h" \) \
+            -not -path "./.git/*" \
+            -not -path "./.github/*" \
+            -not -path "./3rdparty/*" \
+            -not -path "./Generated/*" \
+            -not -path "./communication/lwip-2.0.3/*" \
+            -not -path "./ArcticCore/*")
 
           # Human-readable text report
-          flawfinder --minlevel=2 --quiet $EXCLUDES . > reports/flawfinder.txt || true
+          flawfinder --minlevel=2 --quiet $FILES > reports/flawfinder.txt || true
 
           # HTML formatted report
-          flawfinder --minlevel=2 --html --quiet $EXCLUDES . > reports/flawfinder.html || true
+          flawfinder --minlevel=2 --html --quiet $FILES > reports/flawfinder.html || true
 
           echo "=== flawfinder (preview) ==="
           head -n 50 reports/flawfinder.txt || true
