@@ -30,7 +30,7 @@ jobs:
 
 
       # ----------------------------------------------------
-      # STEP 3 — TESTS (optional)
+      # STEP 3 — OPTIONAL TESTS
       # ----------------------------------------------------
       - name: Run tests if Makefile exists
         run: |
@@ -53,29 +53,55 @@ jobs:
           cppcheck --enable=warning,style,performance 2> cppcheck.txt || true
 
           echo "=== cppcheck (preview) ==="
-          head -n 20 cppcheck.txt
+          head -n 20 cppcheck.txt || true
 
 
       # ----------------------------------------------------
-      # STEP 5 — VULNERABILITY ANALYSIS (SAFE MODE)
+      # STEP 5 — VULNERABILITY ANALYSIS (Flawfinder)
+      # SAFEST VERSION USING A SCRIPT
       # ----------------------------------------------------
-      - name: Install flawfinder
-        run: sudo apt-get install -y flawfinder
-
-      - name: Run flawfinder (safe mode, only real vulnerabilities)
-        env:
-          PYTHONUTF8: 0
-          LC_ALL: C.ISO-8859-1
+      - name: Create flawfinder script
         run: |
-          # SAFEST POSSIBLE command (one line, cannot break in YAML)
-          flawfinder --quiet --minlevel=3 --singleline --dataonly --exclude-dir=.git --exclude-dir=.github --exclude-dir=3rdparty --exclude-dir=Generated --exclude-dir=communication/lwip-2.0.3 --exclude-dir=ArcticCore . > flawfinder.txt || true
+          mkdir -p .github/scripts
+          cat << 'EOF' > .github/scripts/run_flawfinder.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-          echo "=== flawfinder (preview) ==="
-          head -n 20 flawfinder.txt
+# Allow non-UTF8 files
+export PYTHONUTF8=0
+export LC_ALL=C.ISO-8859-1
+
+# Directories to exclude
+EXCLUDES=(
+  --exclude-dir=.git
+  --exclude-dir=.github
+  --exclude-dir=3rdparty
+  --exclude-dir=Generated
+  --exclude-dir=communication/lwip-2.0.3
+  --exclude-dir=ArcticCore
+)
+
+# Build exclude parameters
+EXCLUDE_ARGS=""
+for e in "${EXCLUDES[@]}"; do
+  EXCLUDE_ARGS="$EXCLUDE_ARGS $e"
+done
+
+# Run flawfinder safely (always finishes)
+flawfinder --quiet --minlevel=3 --singleline --dataonly $EXCLUDE_ARGS . > flawfinder.txt || true
+
+echo "=== flawfinder preview ==="
+head -n 50 flawfinder.txt || true
+EOF
+
+      - name: Run flawfinder script
+        run: |
+          chmod +x .github/scripts/run_flawfinder.sh
+          .github/scripts/run_flawfinder.sh
 
 
       # ----------------------------------------------------
-      # STEP 6 — ALWAYS UPLOAD ANALYSIS REPORTS
+      # STEP 6 — ALWAYS UPLOAD REPORTS AS ARTIFACTS
       # ----------------------------------------------------
       - name: Upload analysis reports
         if: always()
