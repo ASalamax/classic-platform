@@ -63,6 +63,10 @@ jobs:
         run: |
           mkdir -p reports
 
+          # Force Flawfinder to accept non-UTF8 encodings
+          export PYTHONUTF8=0
+          export LC_ALL=C.ISO-8859-1
+
           # Human-readable text report
           flawfinder --minlevel=2 --quiet . > reports/flawfinder.txt || true
 
